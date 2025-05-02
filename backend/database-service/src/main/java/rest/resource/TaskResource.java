@@ -81,7 +81,10 @@ public class TaskResource {
             return Response.status(Response.Status.UNAUTHORIZED).build();
         task.setUserEmail(user.getEmail());
         task = taskDAO.createTask(task);
-        return Response.status(Response.Status.CREATED).entity(task).build();
+        if (task != null)
+            return Response.status(Response.Status.CREATED).entity(task).build();
+        else
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).build();
     }
 
 
@@ -133,5 +136,15 @@ public class TaskResource {
         if (user == null)
             return Response.status(Response.Status.UNAUTHORIZED).build();
         return Response.ok(taskDAO.getTrashedUserTasks(user.getEmail())).build();
+    }
+
+    @DELETE
+    @Path("/{taskId}")
+    public Response deleteTask(@PathParam("taskId") int taskId) {
+        User user = userDAO.getUserByEmail(jwt.getSubject());
+        if (user == null)
+            return Response.status(Response.Status.UNAUTHORIZED).build();
+        taskDAO.deleteTask(taskId, user.getEmail());
+        return Response.noContent().build();
     }
 }

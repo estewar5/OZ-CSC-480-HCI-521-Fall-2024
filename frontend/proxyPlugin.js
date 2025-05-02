@@ -12,17 +12,26 @@ export default function proxyPlugin(authRoot, apiRoot) {
         httpsAgent: new https.Agent({ rejectUnauthorized: false })
     })
 
-    async function getJwt(req) {
-        if (req.cookies.ozSessionID == undefined) {
-            throw { response: { status: 401, data: 'no sessionID cookie' } }
-        }
-        return (await instance.get(authRoot + '/auth/jwt', { headers: { 'Oz-Session-Id': req.cookies.ozSessionID } })).data
+    async function getJwt(req, res) {
+        if (req.cookies.ozSessionID == undefined)
+            return null
+        const response = await instance.get(authRoot + '/auth/jwt', { headers: { 'Oz-Session-Id': req.cookies.ozSessionID } })
+            .catch(error => handleRequestError(error, res, 'getJwt'))
+        if (response && response.status == 200)
+            return await response.data
+        else
+            return null
     }
 
-    async function authHeaders(req, headers) {
+    async function authHeaders(req, res, headers) {
         headers = headers ? headers : {}
-        headers['Authorization'] = 'Bearer ' + await getJwt(req)
-        return headers
+        const jwt = await getJwt(req, res)
+        if (jwt) {
+            headers['Authorization'] = 'Bearer ' + jwt
+            return headers
+        } else
+            return null
+
     }
 
     async function handleRequestError(error, res, context) {
@@ -42,7 +51,11 @@ export default function proxyPlugin(authRoot, apiRoot) {
     function proxyGet() {
         return async (req, res) => {
             try {
-                const response = await instance.get(apiRoot + req.path, { headers: await authHeaders(req) })
+                const headers = await authHeaders(req)
+                if (!headers)
+                    throw new Error('could not auth')
+                const response = await instance.get(apiRoot + req.path, { headers })
+                    .catch(error => handleRequestError(error, res, 'get: ' + req.path))
                 res.send(response.data).end()
             } catch (error) {
                 handleRequestError(error, res, 'get: ' + req.path)
@@ -53,12 +66,14 @@ export default function proxyPlugin(authRoot, apiRoot) {
     function proxyPost() {
         return async (req, res) => {
             try {
-                const response = await instance.post(apiRoot + req.path, req.body, {
-                    headers: await authHeaders(req, {
-                        'Accept': 'application/json',
-                        'Content-Type': 'application/json',
-                    })
+                const headers = await authHeaders(req, {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
                 })
+                if (!headers)
+                    throw new Error('could not auth')
+                const response = await instance.post(apiRoot + req.path, req.body, { headers })
+                    .catch(error => handleRequestError(error, res, 'post: ' + req.path))
                 res.send(response.data).end()
             } catch (error) {
                 handleRequestError(error, res, 'post: ' + req.path)
@@ -69,12 +84,14 @@ export default function proxyPlugin(authRoot, apiRoot) {
     function proxyPut() {
         return async (req, res) => {
             try {
-                const response = await instance.put(apiRoot + req.path, req.body, {
-                    headers: await authHeaders(req, {
-                        'Accept': 'application/json',
-                        'Content-Type': 'application/json',
-                    })
+                const headers = await authHeaders(req, {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
                 })
+                if (!headers)
+                    throw new Error('could not auth')
+                const response = await instance.put(apiRoot + req.path, req.body, { headers })
+                    .catch(error => handleRequestError(error, res, 'put: ' + req.path))
                 res.send(response.data).end()
             } catch (error) {
                 handleRequestError(error, res, 'put: ' + req.path)
@@ -85,7 +102,11 @@ export default function proxyPlugin(authRoot, apiRoot) {
     function proxyDelete() {
         return async (req, res) => {
             try {
-                const response = await instance.delete(apiRoot + req.path, { headers: await authHeaders(req) })
+                const headers = await authHeaders(req)
+                if (!headers)
+                    throw new Error('could not auth')
+                const response = await instance.delete(apiRoot + req.path, { headers })
+                    .catch(error => handleRequestError(error, res, 'delete: ' + req.path))
                 res.send(response.data).end()
             } catch (error) {
                 handleRequestError(error, res, 'delete: ' + req.path)
@@ -98,10 +119,12 @@ export default function proxyPlugin(authRoot, apiRoot) {
     // check if the user is authenticated
     app.get('/auth', async (req, res) => {
         try {
-            await getJwt(req)
-            res.send()
+            if (!(await getJwt(req))) {
+                res.status(401).send('Session expired or invalid')
+            } else
+                res.send()
         } catch (error) {
-            res.status(401).send(error.message)
+            res.status(500).send(error.message)
         }
     })
     // get user details
@@ -116,6 +139,12 @@ export default function proxyPlugin(authRoot, apiRoot) {
     app.get('/projects/:projectId', proxyGet())
     // update a given project
     app.put('/projects/:projectId', proxyPut())
+    // get all trashed projects
+    app.get('/projects/trash', proxyGet())
+    // trash a given project
+    app.put('/projects/trash/:projectId', proxyPut())
+    // restore a given project
+    app.put('/projects/restore/:projectId', proxyPut())
     // delete a given project
     app.delete('/projects/:projectId', proxyDelete())
     // get all trashed projects

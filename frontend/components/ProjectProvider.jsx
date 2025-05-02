@@ -4,7 +4,7 @@ import { useLocation } from 'react-router-dom'
 
 export default function ProjectProvider({children}) {
     const [projects, setProjects] = useState(null)
-    const [trashedProjects, setTrashedProjects] = useState(null);
+    const [trashedProjects, setTrashedProjects] = useState([])
     const location = useLocation()
 
     const createDefaultProject = async () => {
@@ -26,7 +26,7 @@ export default function ProjectProvider({children}) {
     useEffect(() => {
         if (projects == null)
             return
-        if (projects.length === 0)
+        if (projects.length == 0)
             createDefaultProject()
     }, [projects])
 
@@ -47,9 +47,7 @@ export default function ProjectProvider({children}) {
         try {
             const response = await fetch(`/projects/${projectID}`, {method: 'DELETE'})
             if (response.ok) {
-                setProjects(prevTasks => prevTasks.filter(projects => projects.id !== projectID))
-                if (window.location.pathname == `/project/${projectID}`)
-                    window.location.replace('/')
+                setTrashedProjects(prevTasks => prevTasks.filter(projects => projects.id !== projectID))
             } else {
                 console.log(`Error deleting task ${projectID}`)
             }
@@ -103,7 +101,7 @@ export default function ProjectProvider({children}) {
     };
 
     return (
-        <ProjectContext.Provider value={{ projects, deleteProject, addProject, trashProject, restoreProject }}>
+        <ProjectContext.Provider value={{ projects, trashedProjects, deleteProject, addProject, trashProject, restoreProject }}>
             {children}
         </ProjectContext.Provider>
     )
